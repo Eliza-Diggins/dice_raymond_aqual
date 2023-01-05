@@ -154,6 +154,8 @@ subroutine read_params
   write(*,*)'      If you use this patch in a publication, please cite:     '
   write(*,*)'             Candlish et al. 2015 MNRAS 446, 1060.             '
   write(*,*)' '
+  write(*,*)'      DICE + RAyMOND patch implemented by Eliza Diggins        '
+  write(*,*)' '
   write(*,'(" Working with nproc = ",I4," for ndim = ",I1)')ncpu,ndim
   ! Check nvar is not too small
 #ifdef SOLVERhydro
