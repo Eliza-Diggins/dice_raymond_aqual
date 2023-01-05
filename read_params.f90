@@ -1,3 +1,62 @@
+! Defining dice_commons module
+module dice_commons
+   use amr_commons
+   use hydro_commons
+ 
+   ! particle data
+   character(len=512)::ic_file, ic_format
+   ! misc
+   real(dp)::IG_rho         = 1.0D-5
+   real(dp)::IG_T2          = 1.0D7
+   real(dp)::IG_metal       = 0.01
+   real(dp)::ic_scale_pos   = 1.0
+   real(dp)::ic_scale_vel   = 1.0
+   real(dp)::ic_scale_mass  = 1.0
+   real(dp)::ic_scale_u     = 1.0
+   real(dp)::ic_scale_age   = 1.0
+   real(dp)::ic_scale_metal = 1.0
+   real(dp)::ic_t_restart   = 0.0D0
+   integer::ic_mask_ivar    = 0
+   real(dp)::ic_mask_min    = 1d40
+   real(dp)::ic_mask_max    = -1d40
+   integer::ic_mask_ptype   = -1
+   integer::ic_ifout        = 1
+   integer::ic_nfile        = 1
+   integer,dimension(1:6)::ic_skip_type        = -1
+   integer,dimension(1:6)::cosmo_add_gas_index = -1
+   real(dp),dimension(1:3)::ic_mag_const = (/ 0.0, 0.0, 0.0 /)
+   real(dp),dimension(1:3)::ic_center    = (/ 0.0, 0.0, 0.0 /)
+   character(len=4)::ic_head_name  = 'HEAD'
+   character(len=4)::ic_pos_name   = 'POS '
+   character(len=4)::ic_vel_name   = 'VEL '
+   character(len=4)::ic_id_name    = 'ID  '
+   character(len=4)::ic_mass_name  = 'MASS'
+   character(len=4)::ic_u_name     = 'U   '
+   character(len=4)::ic_metal_name = 'Z   '
+   character(len=4)::ic_age_name   = 'AGE '
+   ! Gadget units in cgs
+   real(dp)::gadget_scale_l = 3.085677581282D21
+   real(dp)::gadget_scale_v = 1.0D5
+   real(dp)::gadget_scale_m = 1.9891D43
+   real(dp)::gadget_scale_t = 1.0D6*365*24*3600
+   real(dp),allocatable,dimension(:)::up
+   real(dp),allocatable,dimension(:)::maskp
+   logical::dice_init       = .false.
+   logical::amr_struct      = .false.
+   ! magnetic
+   integer,parameter::MAXGAL= 32
+   real(dp),dimension(1:MAXGAL)::ic_mag_center_x = 0.0
+   real(dp),dimension(1:MAXGAL)::ic_mag_center_y = 0.0
+   real(dp),dimension(1:MAXGAL)::ic_mag_center_z = 0.0
+   real(dp),dimension(1:MAXGAL)::ic_mag_axis_x   = 0.0
+   real(dp),dimension(1:MAXGAL)::ic_mag_axis_y   = 0.0
+   real(dp),dimension(1:MAXGAL)::ic_mag_axis_z   = 1.0
+   real(dp),dimension(1:MAXGAL)::ic_mag_scale_R  = 1.0
+   real(dp),dimension(1:MAXGAL)::ic_mag_scale_H  = 1.0
+   real(dp),dimension(1:MAXGAL)::ic_mag_scale_B  = 0.0
+ 
+ end module dice_commons
+ 
 subroutine read_params
   use amr_commons
   use pm_parameters
@@ -6,6 +65,9 @@ subroutine read_params
   use mpi_mod
   !RAyMOND
   use mond_commons
+
+  ! Dice
+  use dice_commons
   implicit none
   !--------------------------------------------------
   ! Local variables
@@ -39,12 +101,22 @@ subroutine read_params
        & ,cg_levelmin,cic_levelmax
   namelist/lightcone_params/thetay_cone,thetaz_cone,zmax_cone
   namelist/movie_params/levelmax_frame,nw_frame,nh_frame,ivar_frame &
-       & ,xcentre_frame,ycentre_frame,zcentre_frame &
+       & ,xcentre_frame,ycentre_frame,zcentre_frame,movie_vars &
        & ,deltax_frame,deltay_frame,deltaz_frame,movie,zoom_only_frame &
        & ,imovout,imov,tstartmov,astartmov,tendmov,aendmov,proj_axis,movie_vars_txt &
        & ,theta_camera,phi_camera,dtheta_camera,dphi_camera,focal_camera,dist_camera,ddist_camera &
        & ,perspective_camera,smooth_frame,shader_frame,tstart_theta_camera,tstart_phi_camera &
        & ,tend_theta_camera,tend_phi_camera,method_frame,varmin_frame,varmax_frame
+  namelist/dice_params/ ic_file,ic_nfile,ic_format,IG_rho,IG_T2,IG_metal &
+       & ,ic_head_name,ic_pos_name,ic_vel_name,ic_id_name,ic_mass_name &
+       & ,ic_u_name,ic_metal_name,ic_age_name &
+       & ,gadget_scale_l, gadget_scale_v, gadget_scale_m ,gadget_scale_t &
+       & ,ic_scale_pos,ic_scale_vel,ic_scale_mass,ic_scale_u,ic_scale_age &
+       & ,ic_scale_metal,ic_center,ic_ifout,amr_struct,ic_t_restart,ic_mag_const &
+       & ,ic_mag_center_x,ic_mag_center_y,ic_mag_center_z &
+       & ,ic_mag_axis_x,ic_mag_axis_y,ic_mag_axis_z &
+       & ,ic_mag_scale_R,ic_mag_scale_H,ic_mag_scale_B,cosmo_add_gas_index,ic_skip_type &
+       & ,ic_mask_ivar,ic_mask_min,ic_mask_max,ic_mask_ptype
 #ifdef EFE
   namelist/mond_params/imond_a0,mond_n,maxstoredcells,diaginterplevel &
        & ,g_ext_x,g_ext_y,g_ext_z
@@ -177,6 +249,9 @@ subroutine read_params
   rewind(1)
   read(1,NML=poisson_params,END=81)
 81 continue
+rewind(1)
+read(1,NML=dice_params,END=106)
+106 continue
 
   !-------------------------------------------------
   ! Read optional nrestart command-line argument
@@ -295,7 +370,7 @@ subroutine read_params
 
   call read_hydro_params(nml_ok)
 #ifdef RT
-  call read_rt_params(nml_ok)
+  call rt_read_hydro_params()
 #endif
 #if NDIM==3
   if (sink)call read_sink_params
@@ -347,14 +422,14 @@ subroutine read_params
   do i=1,levelmin-1
      nexpand   (i)= 1
      nsubcycle (i)= 1
-     r_refine  (i)=-1
-     a_refine  (i)= 1
-     b_refine  (i)= 1
-     x_refine  (i)= 0
-     y_refine  (i)= 0
-     z_refine  (i)= 0
-     m_refine  (i)=-1
-     exp_refine(i)= 2
+     r_refine  (i)=-1.0
+     a_refine  (i)= 1.0
+     b_refine  (i)= 1.0
+     x_refine  (i)= 0.0
+     y_refine  (i)= 0.0
+     z_refine  (i)= 0.0
+     m_refine  (i)=-1.0
+     exp_refine(i)= 2.0
      initfile  (i)= ' '
   end do
 
